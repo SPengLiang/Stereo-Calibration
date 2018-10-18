@@ -1,2 +1,2 @@
 # Stereo-Calibration
-calibration of a binocular camera system,
+calibration of a binocular camera system
