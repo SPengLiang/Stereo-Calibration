@@ -34,79 +34,51 @@ def calibrate_single(file_dir):
     return np.array(real_points), np.array(pic_points), cameraMatrix, distCoeffs
 
 
-left_pic_dir = r'D:\stereo\stereo\Stereo_Calibration\pic\left'
-right_pic_dir = r'D:\stereo\stereo\Stereo_Calibration\pic\right'
-real_points, left_pic_points, left_cameraMatrix, left_distCoeffs = calibrate_single(left_pic_dir)
-_, right_pic_points,  right_cameraMatrix, right_distCoeffs = calibrate_single(right_pic_dir)
+if __name__ == '__main__':
+    #标定所用图片文件夹
+    left_pic_dir = r'..\pic\left'
+    right_pic_dir = r'..\pic\right'
+    #单目标定
+    real_points, left_pic_points, left_cameraMatrix, left_distCoeffs = calibrate_single(left_pic_dir)
+    _, right_pic_points,  right_cameraMatrix, right_distCoeffs = calibrate_single(right_pic_dir)
 
-size = (640, 480)
+    size = (640, 480)#图片尺寸
 
-_, _, _, _, _, R, T, E, F = cv.stereoCalibrate(real_points, left_pic_points, right_pic_points,
-                                            left_cameraMatrix, left_distCoeffs,
-                                            right_cameraMatrix, right_distCoeffs, size)
+    #进行双目标定
+    _, _, _, _, _, R, T, E, F = cv.stereoCalibrate(real_points, left_pic_points, right_pic_points,
+                                                left_cameraMatrix, left_distCoeffs,
+                                                right_cameraMatrix, right_distCoeffs, size)
 
-R1, R2, P1, P2, Q, validPixROI1, validPixROI2 = cv.stereoRectify(left_cameraMatrix, left_distCoeffs,
-                                                                 right_cameraMatrix, right_distCoeffs,
-                                                                 size, R, T)
+    #相机坐标系转换
+    R1, R2, P1, P2, Q, validPixROI1, validPixROI2 = cv.stereoRectify(left_cameraMatrix, left_distCoeffs,
+                                                                     right_cameraMatrix, right_distCoeffs,
+                                                                     size, R, T)
+    #减小畸变
+    left_map1, leftmap2 = cv.initUndistortRectifyMap(left_cameraMatrix, left_distCoeffs, R1,
+                                                     P1, size=size, m1type=cv.CV_16SC2)
+    right_map1, right_map2 = cv.initUndistortRectifyMap(right_cameraMatrix, right_distCoeffs, R2,
+                                                        P2, size=size, m1type=cv.CV_16SC2)
+    #测试图片
+    org = cv.imread(r'..\pic\left\left01.jpg')
+    org2 = cv.imread(r'..\pic\right\right01.jpg')
 
-left_map1, leftmap2 = cv.initUndistortRectifyMap(left_cameraMatrix, left_distCoeffs, R1,
-                                                 P1, size=size, m1type=cv.CV_16SC2)
-right_map1, right_map2 = cv.initUndistortRectifyMap(right_cameraMatrix, right_distCoeffs, R2,
-                                                    P2, size=size, m1type=cv.CV_16SC2)
+    #显示线条，方便比较
+    dst = cv.remap(org, left_map1, leftmap2, cv.INTER_LINEAR)
+    for i in range(20):
+        cv.line(dst, (0, i*24), (640, i*24), (0,255,0), 1)
 
-org = cv.imread(r'D:\stereo\stereo\Stereo_Calibration\pic\left\left01.jpg')
-org2 = cv.imread(r'D:\stereo\stereo\Stereo_Calibration\pic\right\right01.jpg')
+    dst2 = cv.remap(org2, right_map1, right_map2, cv.INTER_LINEAR)
+    for i in range(20):
+        cv.line(dst2, (0, i*24), (640, i*24), (0,255,0), 1)
 
+    canvas = np.zeros((480,1280,3), dtype="uint8")
+    canvas[:, :640] = dst
+    canvas[:, 640:] = dst2
+    cv.line(canvas, (640, 0), (640, 480), (255,0,0), 1)
+    cv.imshow('canvas', canvas)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
 
-dst = cv.remap(org, left_map1, leftmap2, cv.INTER_LINEAR)
-for i in range(20):
-    cv.line(dst, (0, i*24), (640, i*24), (0,255,0), 1)
-#cv.imshow('dst', dst)
-dst_roi = dst[validPixROI1[1]: validPixROI1[3], validPixROI1[0]:validPixROI1[2], :]
-#cv.imshow('dst_roi', dst_roi)
-
-
-dst2 = cv.remap(org2, right_map1, right_map2, cv.INTER_LINEAR)
-for i in range(20):
-    cv.line(dst2, (0, i*24), (640, i*24), (0,255,0), 1)
-#cv.imshow('dst2', dst2)
-dst_roi2 = dst2[validPixROI2[1]: validPixROI2[3], validPixROI2[0]:validPixROI2[2], :]
-#cv.imshow('dst_roi2', dst_roi2)
-
-canvas = np.zeros((480,1280,3), dtype="uint8")
-canvas[:, :640] = dst
-canvas[:, 640:] = dst2
-cv.line(canvas, (640, 0), (640, 480), (255,0,0), 1)
-cv.imshow('canvas', canvas)
-
-cv.waitKey(0)
-cv.destroyAllWindows()
-
-print("left param: ", left_cameraMatrix, left_distCoeffs)
-print("right param: ", right_cameraMatrix, right_distCoeffs)
-print("stereo param: ", R, T, E, F)
-
-imgL = cv.cvtColor(dst, cv.COLOR_BGR2GRAY)
-imgR = cv.cvtColor(dst2, cv.COLOR_BGR2GRAY)
-
-# disparity range is tuned for 'aloe' image pair
-window_size = 3
-min_disp = 16
-num_disp = 112 - min_disp
-stereo = cv.StereoSGBM_create(minDisparity=min_disp,
-                               numDisparities=num_disp,
-                               blockSize=16,
-                               P1=8 * 3 * window_size ** 2,
-                               P2=32 * 3 * window_size ** 2,
-                               disp12MaxDiff=1,
-                               uniquenessRatio=10,
-                               speckleWindowSize=100,
-                               speckleRange=32
-                               )
-
-print('computing disparity...')
-disp = stereo.compute(imgL, imgR).astype(np.float32) / 16.0
-
-cv.imshow('disparity', (disp - min_disp) / num_disp)
-cv.waitKey()
-cv.destroyAllWindows()
+    print("left param: ", left_cameraMatrix, left_distCoeffs)
+    print("right param: ", right_cameraMatrix, right_distCoeffs)
+    print("stereo param: ", R, T, E, F)
